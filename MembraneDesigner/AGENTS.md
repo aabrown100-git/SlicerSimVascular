@@ -6,7 +6,13 @@ These instructions apply to all work under `MembraneDesigner/`.
 
 Membrane Designer is a research prototype for mapping an editable flat 2D membrane pattern to a pressurized 3D membrane sewn to a Slicer closed curve.
 
-The module currently provides a working Slicer UI, persistent parameter node, 2D periodic-spline editor, seam-correspondence coloring, a CPU NumPy XPBD preview, and Green-Lagrange strain visualization. It does **not** yet implement Taichi, triangle-strain DiffXPBD, analytical gradients, calibrated mechanics, or inverse optimization.
+The module currently provides a working Slicer UI, persistent parameter node,
+eight-control-point 2D periodic-spline editor, best-fit-plane seam projection,
+equal-total-perimeter enforcement, constrained unstructured meshing,
+arclength-based seam-correspondence coloring, a CPU NumPy XPBD preview, and
+Green-Lagrange strain visualization. It does **not** yet implement Taichi,
+triangle-strain DiffXPBD, analytical gradients, calibrated mechanics, verified
+static equilibrium, or inverse optimization.
 
 Do not describe the current edge-constraint preview as a completed DiffXPBD solver or as clinically validated biomechanics.
 
@@ -45,6 +51,11 @@ The parent extension registers the module in `../CMakeLists.txt`.
 - The same arclength color convention must be used in the 2D and 3D views.
 - Preserve an explicit seam-start marker because a cyclic color map is ambiguous at its wrap point.
 - Boundary particles are hard-constrained to their sampled seam targets.
+- The discretized 2D boundary and 3D seam must have equal total perimeter.
+  Enforce this after seam projection, after every 2D edit, and before solving.
+  Both sides use 64 uniform-arclength samples for this invariant.
+- Do not equate equal total perimeter with exact local no-stretch sewing. The
+  current editor does not constrain every corresponding boundary-edge length.
 - The rest mesh is a constrained unstructured triangulation. Boundary vertices
   occupy the first contiguous point-ID block in normalized-arclength order;
   preserve this invariant when changing the mesher.
@@ -53,7 +64,18 @@ The parent extension registers the module in `../CMakeLists.txt`.
 
 ## Solver guidance
 
-The current `XPBDSolver` is a functional fallback, not the intended final solver. It uses vectorized edge-length projection and provisional pressure/compliance scaling.
+The current `XPBDSolver` is a functional fallback, not the intended final
+solver. Pressure (`kPa` to `N/mm²`) and lumped mass (1000 kg/m³ in mm–N–s
+units) are dimensionally consistent. The edge compliance law is provisional.
+
+Physical lumped masses give inverse masses around `10^9`. In the current XPBD
+denominator these overwhelm the modulus-dependent compliance term, so changing
+Young's modulus has little practical effect. Pressure also creates large
+accelerations, and the fixed-duration damped solve may stop in a transient
+state. Do not tune constants merely to make a plausible bulge. Replace the
+constitutive formulation and add equilibrium diagnostics. A forward-solver
+change is not validated until pressure, modulus, and thickness sensitivity are
+physically ordered and stable under timestep, iteration, and mesh refinement.
 
 The next solver milestone is:
 
@@ -89,6 +111,9 @@ displayNode.SetActiveScalar(arrayName, vtk.vtkAssignAttribute.CELL_DATA)
 
 - Do not use the unavailable `SetScalarModeToUseCellData()` method.
 - Do not report strain for inverted or degenerate triangles.
+- Report averages using rest-area weighting so irregular mesh density does not
+  bias the statistic. The current status reports rest-area-weighted average and
+  maximum principal Green-Lagrange strain.
 - Label current strain as an engineering diagnostic until material and solver validation are complete.
 
 ## Validation commands
@@ -126,7 +151,8 @@ For UI-affecting changes:
 At minimum, preserve tests for:
 
 - Periodic spline closure and sampling.
-- Expected mesh sizes and finite coordinates.
+- Valid unstructured connectivity, preserved boundary edges, and finite coordinates.
+- Equality of discretized 2D and 3D total perimeter after initialization and editing.
 - Exact hard-boundary enforcement.
 - Rigid-motion zero strain.
 - Analytical affine stretch and shear strain.
@@ -152,8 +178,9 @@ Work in this order unless the user explicitly changes priorities:
 
 1. Expand deterministic geometry, strain, inversion, and parameter-persistence tests.
 2. Split the monolithic Python file into geometry, solver, and visualization components without changing behavior.
-3. Implement and validate the unit-consistent Taichi triangle-strain forward solver.
+3. Implement and validate a statically converged, material-sensitive
+   triangle-strain forward solver, then port it to Taichi.
 4. Add background cancellation and streamed main-thread previews.
-5. Add seam landmarks, general constrained meshing, and SVG import/export.
+5. Add seam landmarks, mesh-quality/refinement controls, and SVG import/export.
 6. Implement DiffXPBD adjoints and finite-difference gradient checks.
 7. Add inverse spline optimization only after the forward and gradient validations pass.

@@ -10,6 +10,10 @@ from slicer.ScriptedLoadableModule import *
 from slicer.util import VTKObservationMixin
 from slicer.parameterNodeWrapper import parameterNodeWrapper, WithinRange, Choice
 
+DEFAULT_PATTERN_CONTROL_POINTS = 8
+DEFAULT_DEMO_SEAM_CONTROL_POINTS = 16
+SIMULATION_BOUNDARY_SAMPLES = 64
+
 
 def correspondenceColor(s):
   """Shared cyclic seam color used by both the Qt and VTK views."""
@@ -79,6 +83,23 @@ class PeriodicSpline:
     return (b0[:,None]*p[(i-1)%len(p)] + b1[:,None]*p[i%len(p)] +
             b2[:,None]*p[(i+1)%len(p)] + b3[:,None]*p[(i+2)%len(p)])
 
+  @staticmethod
+  def sampleByArclength(controlPoints, count, oversampling=16):
+    """Sample the periodic spline at uniform normalized arclength."""
+    denseCount=max(count*oversampling,count)
+    dense=PeriodicSpline.sample(controlPoints,denseCount)
+    lengths=np.linalg.norm(np.roll(dense,-1,axis=0)-dense,axis=1)
+    cumulative=np.r_[0.0,np.cumsum(lengths)]
+    total=cumulative[-1]
+    if total<=1e-9: raise ValueError('The 2D boundary has zero perimeter')
+    distances=np.arange(count,dtype=float)*total/count
+    result=[]
+    for distance in distances:
+      index=min(np.searchsorted(cumulative,distance,side='right')-1,denseCount-1)
+      fraction=(distance-cumulative[index])/max(lengths[index],1e-12)
+      result.append((1.0-fraction)*dense[index]+fraction*dense[(index+1)%denseCount])
+    return np.asarray(result)
+
 
 class MembraneMesh:
   @staticmethod
@@ -97,7 +118,7 @@ class MembraneMesh:
   @staticmethod
   def create(controlPoints, angular=64, resolution=16):
     """Create a constrained, unstructured triangular mesh of the pattern."""
-    boundary = PeriodicSpline.sample(controlPoints, angular)
+    boundary = PeriodicSpline.sampleByArclength(controlPoints, angular)
     lower=np.min(boundary,axis=0); upper=np.max(boundary,axis=0)
     targetInterior=max(angular,angular*resolution-angular)
     polygonArea=0.5*abs(np.sum(boundary[:,0]*np.roll(boundary[:,1],-1)
@@ -257,6 +278,12 @@ class XPBDSolver:
       areal[ci] = math.sqrt(max(np.linalg.det(F.T.dot(F)),0.0))-1.0
     return values, areal
 
+  def restTriangleAreas(self):
+    a,b,c=self.triangles.T
+    ab=self.rest2d[b]-self.rest2d[a]
+    ac=self.rest2d[c]-self.rest2d[a]
+    return 0.5*np.abs(ab[:,0]*ac[:,1]-ab[:,1]*ac[:,0])
+
 
 class PatternCanvas(qt.QGraphicsView):
   def __init__(self, changedCallback, parent=None):
@@ -268,6 +295,8 @@ class PatternCanvas(qt.QGraphicsView):
     self.setMinimumWidth(420)
     self.controlItems = []
     self.pathItems = []
+    self.targetPerimeterMm = None
+    self.perimeterSampleCount = SIMULATION_BOUNDARY_SAMPLES
     self._last = None
     self.pollTimer = qt.QTimer(self)
     self.pollTimer.setInterval(80)
@@ -275,7 +304,7 @@ class PatternCanvas(qt.QGraphicsView):
     self.pollTimer.start()
     self.setEllipse()
 
-  def setEllipse(self, n=12, rx=45.0, ry=32.0):
+  def setEllipse(self, n=DEFAULT_PATTERN_CONTROL_POINTS, rx=45.0, ry=32.0):
     self.setControls([[rx*math.cos(2*math.pi*i/n), ry*math.sin(2*math.pi*i/n)] for i in range(n)])
 
   def setControls(self, controlPoints):
@@ -292,9 +321,38 @@ class PatternCanvas(qt.QGraphicsView):
   def controls(self):
     return np.array([[i.pos().x(), -i.pos().y()] for i in self.controlItems])
 
+  @staticmethod
+  def sampledPerimeter(controlPoints, sampleCount=64):
+    boundary=PeriodicSpline.sampleByArclength(controlPoints,sampleCount)
+    return float(np.sum(np.linalg.norm(np.roll(boundary,-1,axis=0)-boundary,axis=1)))
+
+  @staticmethod
+  def controlsWithPerimeter(controlPoints, targetPerimeterMm, sampleCount=64):
+    controls=np.asarray(controlPoints,dtype=float)
+    current=PatternCanvas.sampledPerimeter(controls,sampleCount)
+    if current<=1e-9: raise ValueError('The 2D boundary has zero perimeter')
+    center=np.mean(controls,axis=0)
+    return center+(controls-center)*(float(targetPerimeterMm)/current)
+
+  def setTargetPerimeter(self, perimeterMm, enforce=True):
+    self.targetPerimeterMm=float(perimeterMm) if perimeterMm and perimeterMm>0 else None
+    if enforce and self.targetPerimeterMm and self.controlItems:
+      self._enforceTargetPerimeter()
+      self._last=self.controls().copy(); self._redraw()
+
+  def _enforceTargetPerimeter(self):
+    if not self.targetPerimeterMm: return
+    controls=self.controls()
+    constrained=self.controlsWithPerimeter(
+      controls,self.targetPerimeterMm,self.perimeterSampleCount)
+    for item,point in zip(self.controlItems,constrained):
+      item.setPos(float(point[0]),-float(point[1]))
+
   def _poll(self):
     now=self.controls()
     if self._last is None or not np.allclose(now,self._last):
+      self._enforceTargetPerimeter()
+      now=self.controls()
       self._last=now.copy(); self._redraw(); self.changedCallback()
 
   @staticmethod
@@ -305,10 +363,13 @@ class PatternCanvas(qt.QGraphicsView):
     for item in self.pathItems: self.scene2d.removeItem(item)
     self.pathItems=[]
     pts=PeriodicSpline.sample(self.controls(),128)
+    segmentLengths=np.linalg.norm(np.roll(pts,-1,axis=0)-pts,axis=1)
+    total=max(float(np.sum(segmentLengths)),1e-12)
+    arclength=np.r_[0.0,np.cumsum(segmentLengths[:-1])]/total
     for i in range(len(pts)):
       j=(i+1)%len(pts)
       line=qt.QGraphicsLineItem(pts[i,0],-pts[i,1],pts[j,0],-pts[j,1])
-      line.setPen(qt.QPen(self.colorAt(i/len(pts)),4.0))
+      line.setPen(qt.QPen(self.colorAt(arclength[i]),4.0))
       self.scene2d.addItem(line); self.pathItems.append(line)
     marker=qt.QGraphicsEllipseItem(pts[0,0]-7,-pts[0,1]-7,14,14)
     marker.setBrush(qt.QBrush(qt.QColor('#ffffff'))); marker.setPen(qt.QPen(qt.QColor('#000000'),3))
@@ -390,6 +451,8 @@ class MembraneDesignerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       if seam and not node.splineControlPointsJson:
         self._lastSeamNodeId = None
         self.onSeamChanged(seam)
+      elif seam:
+        self.canvas.setTargetPerimeter(self._seamPerimeter(seam),enforce=True)
 
   def onParameterNodeModified(self,caller=None,event=None):
     if not self.canvas or not self._parameterNode: return
@@ -416,21 +479,22 @@ class MembraneDesignerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     try:
       if self._parameterNode.seamCurve is not seam:
         self._parameterNode.seamCurve = seam
-      seamSamples = self._seamPoints(seam, 16)
+      seamSamples = self._seamPoints(seam, DEFAULT_PATTERN_CONTROL_POINTS)
       self.canvas.setControls(projectPointsToBestFitPlane(seamSamples))
+      self.canvas.setTargetPerimeter(self._seamPerimeter(seam),enforce=True)
       self.onPatternChanged()
     except Exception as exc:
       logging.warning('Could not initialize flat pattern from seam: %s', exc)
 
   def onCreateDemo(self):
-    self.canvas.setEllipse(12,45.0,32.0)
+    self.canvas.setEllipse(DEFAULT_PATTERN_CONTROL_POINTS,45.0,32.0)
     node=slicer.mrmlScene.GetFirstNodeByName('Demo suture contour')
     if not node or not node.IsA('vtkMRMLMarkupsClosedCurveNode'):
       node=slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsClosedCurveNode','Demo suture contour')
     else:
       node.RemoveAllControlPoints()
-    for i in range(48):
-      t=2*math.pi*i/48
+    for i in range(DEFAULT_DEMO_SEAM_CONTROL_POINTS):
+      t=2*math.pi*i/DEFAULT_DEMO_SEAM_CONTROL_POINTS
       node.AddControlPoint(vtk.vtkVector3d(45*math.cos(t),32*math.sin(t),0.0))
     self._parameterNode.seamCurve=node; self.ui.seamSelector.setCurrentNode(node); self.onSimulate()
 
@@ -446,12 +510,19 @@ class MembraneDesignerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       a=(s-cumulative[k])/max(d[k],1e-12); out.append((1-a)*pts[k]+a*pts[(k+1)%len(pts)])
     return np.array(out)
 
+  def _seamPerimeter(self,node,count=SIMULATION_BOUNDARY_SAMPLES):
+    points=self._seamPoints(node,count)
+    return float(np.sum(np.linalg.norm(np.roll(points,-1,axis=0)-points,axis=1)))
+
   def onSimulate(self):
     try:
       seam=self._parameterNode.seamCurve if self._parameterNode else None
       if not seam: return
       self.ui.statusLabel.text='Solving…'; slicer.app.processEvents()
-      rest,tri,boundary=MembraneMesh.create(self.canvas.controls(),64,16)
+      self.canvas.setTargetPerimeter(self._seamPerimeter(seam),enforce=True)
+      self._parameterNode.splineControlPointsJson=json.dumps(self.canvas.controls().tolist())
+      rest,tri,boundary=MembraneMesh.create(
+        self.canvas.controls(),SIMULATION_BOUNDARY_SAMPLES,16)
       seamPts=self._seamPoints(seam,len(boundary))
       solver=XPBDSolver(rest,tri,boundary,seamPts)
       positions,steps=solver.solve(self._parameterNode.pressureKPa,self._parameterNode.youngMPa,self._parameterNode.thicknessMm,self._parameterNode.damping)
@@ -462,7 +533,12 @@ class MembraneDesignerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
       self.logic.updateSeamModel(seamPts)
       self.logic.setMetric(model,['Maximum principal strain','Areal strain','Correspondence only'].index(self._parameterNode.visualizationMetric))
       if creatingOutputModel: slicer.util.resetThreeDViews()
-      self.ui.statusLabel.text=f'Converged preview: {len(positions)} vertices, {len(tri)} triangles, {steps} steps. Max strain {100*np.max(principal):.1f}%.'
+      boundaryLength=np.sum(np.linalg.norm(np.roll(rest[boundary],-1,axis=0)-rest[boundary],axis=1))
+      restAreas=solver.restTriangleAreas()
+      averagePrincipal=float(np.average(principal,weights=restAreas))
+      self.ui.statusLabel.text=(f'Converged preview: {len(positions)} vertices, {len(tri)} triangles, {steps} steps. '
+                                f'Boundary {boundaryLength:.1f} mm. Average strain {100*averagePrincipal:.1f}%; '
+                                f'maximum strain {100*np.max(principal):.1f}%.')
     except Exception as exc:
       logging.error(traceback.format_exc()); self.ui.statusLabel.text='Simulation failed: '+str(exc)
 
@@ -536,6 +612,9 @@ class MembraneDesignerTest(ScriptedLoadableModuleTest):
     edgeSet={tuple(edge) for edge in edges}
     self.assertTrue(all(tuple(sorted((i,(i+1)%32))) in edgeSet for i in range(32)))
     self.assertTrue(np.all(np.isfinite(x))); self.assertTrue(np.allclose(x[boundary],seam))
+    restAreas=solver.restTriangleAreas()
+    self.assertEqual(len(restAreas),len(tri)); self.assertTrue(np.all(restAreas>0.0))
+    self.assertTrue(np.isfinite(np.average(principal,weights=restAreas)))
     tilted=np.column_stack((seam[:,0],seam[:,1],0.2*seam[:,0]-0.1*seam[:,1]+7.0))
     projected=projectPointsToBestFitPlane(tilted)
     self.assertEqual(projected.shape,(32,2))
@@ -544,3 +623,11 @@ class MembraneDesignerTest(ScriptedLoadableModuleTest):
                               - projected[:,1]*np.roll(projected[:,0],-1)),0.0)
     self.assertTrue(np.allclose(np.linalg.norm(tilted[1:]-tilted[:-1],axis=1),
                                 np.linalg.norm(projected[1:]-projected[:-1],axis=1)))
+    targetPerimeter=240.0
+    constrained=PatternCanvas.controlsWithPerimeter(controls,targetPerimeter,32)
+    self.assertAlmostEqual(PatternCanvas.sampledPerimeter(constrained,32),
+                           targetPerimeter,places=8)
+    restPerimeter=np.sum(np.linalg.norm(np.roll(rest[boundary],-1,axis=0)
+                                        - rest[boundary],axis=1))
+    self.assertAlmostEqual(restPerimeter,
+                           PatternCanvas.sampledPerimeter(controls,32),places=8)
