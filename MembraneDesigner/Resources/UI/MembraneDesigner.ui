@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MembraneDesigner</class>
+ <widget class="qMRMLWidget" name="MembraneDesigner">
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="ctkCollapsibleButton" name="inputsCollapsibleButton">
+     <property name="text"><string>Inputs and material</string></property>
+     <layout class="QFormLayout" name="inputsFormLayout">
+      <item row="0" column="0"><widget class="QLabel" name="seamLabel"><property name="text"><string>Suture contour:</string></property></widget></item>
+      <item row="0" column="1">
+       <widget class="qMRMLNodeComboBox" name="seamSelector">
+        <property name="nodeTypes"><stringlist notr="true"><string>vtkMRMLMarkupsClosedCurveNode</string></stringlist></property>
+        <property name="noneEnabled"><bool>true</bool></property><property name="addEnabled"><bool>false</bool></property><property name="removeEnabled"><bool>false</bool></property>
+        <property name="SlicerParameterName" stdset="0"><string>seamCurve</string></property>
+       </widget>
+      </item>
+      <item row="1" column="0"><widget class="QLabel" name="pressureLabel"><property name="text"><string>Pressure:</string></property></widget></item>
+      <item row="1" column="1"><widget class="ctkDoubleSpinBox" name="pressureSpinBox"><property name="minimum"><double>0.0</double></property><property name="maximum"><double>50.0</double></property><property name="value"><double>2.0</double></property><property name="suffix"><string> kPa</string></property><property name="SlicerParameterName" stdset="0"><string>pressureKPa</string></property></widget></item>
+      <item row="2" column="0"><widget class="QLabel" name="youngLabel"><property name="text"><string>Young's modulus:</string></property></widget></item>
+      <item row="2" column="1"><widget class="ctkDoubleSpinBox" name="youngSpinBox"><property name="minimum"><double>0.01</double></property><property name="maximum"><double>100.0</double></property><property name="value"><double>1.0</double></property><property name="suffix"><string> MPa</string></property><property name="SlicerParameterName" stdset="0"><string>youngMPa</string></property></widget></item>
+      <item row="3" column="0"><widget class="QLabel" name="thicknessLabel"><property name="text"><string>Thickness:</string></property></widget></item>
+      <item row="3" column="1"><widget class="ctkDoubleSpinBox" name="thicknessSpinBox"><property name="minimum"><double>0.01</double></property><property name="maximum"><double>10.0</double></property><property name="value"><double>0.5</double></property><property name="suffix"><string> mm</string></property><property name="SlicerParameterName" stdset="0"><string>thicknessMm</string></property></widget></item>
+      <item row="4" column="0"><widget class="QLabel" name="dampingLabel"><property name="text"><string>Damping:</string></property></widget></item>
+      <item row="4" column="1"><widget class="ctkDoubleSpinBox" name="dampingSpinBox"><property name="minimum"><double>0.8</double></property><property name="maximum"><double>0.9999</double></property><property name="decimals"><number>4</number></property><property name="value"><double>0.985</double></property><property name="SlicerParameterName" stdset="0"><string>damping</string></property></widget></item>
+      <item row="5" column="0" colspan="2"><widget class="QPushButton" name="demoButton"><property name="text"><string>Create demo seam</string></property></widget></item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="ctkCollapsibleButton" name="visualizationCollapsibleButton">
+     <property name="text"><string>Visualization and output</string></property>
+     <layout class="QFormLayout" name="visualizationFormLayout">
+      <item row="0" column="0"><widget class="QLabel" name="metricLabel"><property name="text"><string>Surface coloring:</string></property></widget></item>
+      <item row="0" column="1"><widget class="QComboBox" name="metricComboBox"><item><property name="text"><string>Maximum principal strain</string></property></item><item><property name="text"><string>Areal strain</string></property></item><item><property name="text"><string>Correspondence only</string></property></item><property name="SlicerParameterName" stdset="0"><string>visualizationMetric</string></property></widget></item>
+      <item row="1" column="0"><widget class="QLabel" name="outputLabel"><property name="text"><string>Inflated model:</string></property></widget></item>
+      <item row="1" column="1"><widget class="qMRMLNodeComboBox" name="outputModelSelector"><property name="nodeTypes"><stringlist notr="true"><string>vtkMRMLModelNode</string></stringlist></property><property name="noneEnabled"><bool>true</bool></property><property name="addEnabled"><bool>true</bool></property><property name="removeEnabled"><bool>true</bool></property><property name="baseName"><string>Inflated membrane</string></property><property name="noneDisplay"><string>(Create new)</string></property><property name="SlicerParameterName" stdset="0"><string>outputModel</string></property></widget></item>
+      <item row="2" column="0" colspan="2"><widget class="QPushButton" name="simulateButton"><property name="text"><string>Simulate</string></property></widget></item>
+      <item row="3" column="0" colspan="2"><widget class="QLabel" name="statusLabel"><property name="text"><string>Create or select a closed suture contour.</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+     </layout>
+    </widget>
+   </item>
+   <item><spacer name="verticalSpacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
+  </layout>
+ </widget>
+ <customwidgets>
+  <customwidget><class>qMRMLWidget</class><extends>QWidget</extends><header>qMRMLWidget.h</header><container>1</container></customwidget>
+  <customwidget><class>qMRMLNodeComboBox</class><extends>QComboBox</extends><header>qMRMLNodeComboBox.h</header></customwidget>
+  <customwidget><class>ctkCollapsibleButton</class><extends>QPushButton</extends><header>ctkCollapsibleButton.h</header><container>1</container></customwidget>
+  <customwidget><class>ctkDoubleSpinBox</class><extends>QDoubleSpinBox</extends><header>ctkDoubleSpinBox.h</header></customwidget>
+ </customwidgets>
+ <resources/><connections/>
+</ui>
