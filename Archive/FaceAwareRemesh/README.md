@@ -2,7 +2,9 @@
 
 > **Archived:** This is the original geometry3Sharp/.NET implementation retained
 > for reference. It is not registered or built by SlicerSimVascular. The active
-> implementation lives in the Baffle-Generation repository.
+> implementation is a pure-Python port that needs no helper binary and no .NET
+> runtime — see [`FaceAwareRemesh/`](../../FaceAwareRemesh/) and
+> [`Docs/FaceAwareRemesh.md`](../../Docs/FaceAwareRemesh.md).
 
 Remesh a surface model to a target edge length while keeping its `ModelFaceID`
 face labels, and choose how the seams between labelled faces are held.
