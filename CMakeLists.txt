@@ -21,7 +21,6 @@ include(${Slicer_USE_FILE})
 # Extension modules
 add_subdirectory(SDFStent)
 add_subdirectory(PaintModel)
-add_subdirectory(MembraneDesigner)
 add_subdirectory(FaceAwareRemesh)
 ## NEXT_MODULE
 

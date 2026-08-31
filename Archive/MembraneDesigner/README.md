@@ -1,5 +1,20 @@
 # Membrane Designer
 
+> **Archived:** Retained for reference. It is not registered or built by
+> SlicerSimVascular, and there is no active replacement. The prototype reached a
+> working Slicer module — data model, boundary correspondence, flat-pattern
+> editor, strain visualization — over an XPBD preview whose material response was
+> never made meaningful: physical lumped masses drive the inverse masses to
+> ~10^9 in solver units, which swamps the compliance term and leaves the
+> Young's-modulus control nearly inert, and the solve stops after a fixed step
+> count rather than at verified equilibrium. Making the preview trustworthy means
+> the triangle-strain forward solver described under
+> [Next steps](#next-steps), not a fix to what is here. The design problem it was
+> built for is written up in [`DEVELOPABILITY.md`](DEVELOPABILITY.md), which
+> outlives the code.
+>
+> Module sources are under [`Module/`](Module/).
+
 Membrane Designer is an experimental 3D Slicer module for designing a flat membrane pattern and previewing the pressurized 3D membrane obtained after sewing its boundary to a fixed spatial contour.
 
 The current implementation establishes the Slicer user interface, persistent data model, boundary correspondence, strain visualization, and a CPU-compatible XPBD preview solver. It is an implementation scaffold for the planned Taichi DiffXPBD forward and inverse-design system; it is not yet a validated tissue-mechanics solver.
@@ -82,14 +97,16 @@ per-edge boundary constraint or a linkage-style boundary editor.
 ## Source layout
 
 ```text
-MembraneDesigner/
+Archive/MembraneDesigner/
 ├── AGENTS.md
-├── CMakeLists.txt
-├── MembraneDesigner.py
+├── DEVELOPABILITY.md
 ├── README.md
-└── Resources/
-    └── UI/
-        └── MembraneDesigner.ui
+└── Module/
+    ├── CMakeLists.txt
+    ├── MembraneDesigner.py
+    └── Resources/
+        └── UI/
+            └── MembraneDesigner.ui
 ```
 
 The main Python file currently contains the module, parameter node, spline and mesh utilities, preview solver, canvas, Slicer widget/logic, and core test. These components should be split into focused files when the Taichi backend is introduced.
@@ -102,7 +119,7 @@ Run the core test using Slicer's Python environment:
 "/Applications/Slicer 2.app/Contents/MacOS/Slicer" \
   --no-main-window \
   --disable-cli-modules \
-  --python-code "import sys; sys.path.insert(0, '/path/to/SlicerSimVascular/MembraneDesigner'); import MembraneDesigner; MembraneDesigner.MembraneDesignerTest().runTest(); print('MEMBRANE_TEST_OK'); slicer.app.exit(0)"
+  --python-code "import sys; sys.path.insert(0, '/path/to/SlicerSimVascular/Archive/MembraneDesigner/Module'); import MembraneDesigner; MembraneDesigner.MembraneDesignerTest().runTest(); print('MEMBRANE_TEST_OK'); slicer.app.exit(0)"
 ```
 
 The current test verifies unstructured boundary-edge preservation, finite
@@ -111,8 +128,8 @@ projection, uniform-arclength sampling, and perimeter equality. Development
 checks should also include:
 
 ```bash
-python3 -m py_compile MembraneDesigner/MembraneDesigner.py
-xmllint --noout MembraneDesigner/Resources/UI/MembraneDesigner.ui
+python3 -m py_compile Archive/MembraneDesigner/Module/MembraneDesigner.py
+xmllint --noout Archive/MembraneDesigner/Module/Resources/UI/MembraneDesigner.ui
 git diff --check
 ```
 

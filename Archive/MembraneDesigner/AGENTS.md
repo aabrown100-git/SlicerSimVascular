@@ -1,6 +1,10 @@
 # Membrane Designer Agent Guide
 
-These instructions apply to all work under `MembraneDesigner/`.
+> **Archived:** These instructions applied to the module while it was active.
+> They are kept for whoever picks the prototype back up; see the archived note in
+> [`README.md`](README.md) first for why it was shelved.
+
+These instructions apply to all work under `Archive/MembraneDesigner/`.
 
 ## Purpose and maturity
 
@@ -121,8 +125,8 @@ displayNode.SetActiveScalar(arrayName, vtk.vtkAssignAttribute.CELL_DATA)
 Run these from the `SlicerSimVascular` repository root after every meaningful change:
 
 ```bash
-python3 -m py_compile MembraneDesigner/MembraneDesigner.py
-xmllint --noout MembraneDesigner/Resources/UI/MembraneDesigner.ui
+python3 -m py_compile Archive/MembraneDesigner/Module/MembraneDesigner.py
+xmllint --noout Archive/MembraneDesigner/Module/Resources/UI/MembraneDesigner.ui
 git diff --check
 ```
 
@@ -132,7 +136,7 @@ Run the Slicer-native core test with the relevant local Slicer application path:
 "/Applications/Slicer 2.app/Contents/MacOS/Slicer" \
   --no-main-window \
   --disable-cli-modules \
-  --python-code "import sys; sys.path.insert(0, '/absolute/path/to/SlicerSimVascular/MembraneDesigner'); import MembraneDesigner; MembraneDesigner.MembraneDesignerTest().runTest(); print('MEMBRANE_TEST_OK'); slicer.app.exit(0)"
+  --python-code "import sys; sys.path.insert(0, '/absolute/path/to/SlicerSimVascular/Archive/MembraneDesigner/Module'); import MembraneDesigner; MembraneDesigner.MembraneDesignerTest().runTest(); print('MEMBRANE_TEST_OK'); slicer.app.exit(0)"
 ```
 
 Unrelated startup warnings from other installed Slicer extensions may appear in headless output. The membrane test must still reach `MEMBRANE_TEST_OK` with a successful process exit.
